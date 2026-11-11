@@ -237,23 +237,44 @@ function M:seek(job)
 	call_previewer_for_file_url(file_url, "seek", job)
 end
 
--- Advance the index but wrap around the count to stay in bounds.
-local function advance_index(current, count)
-	return (current % count) + 1
+-- Advance within the candidate indices, wrapping in either direction.
+local function cycle_index(current, candidates, direction)
+	local position
+	for i, index in ipairs(candidates) do
+		if index == current then
+			position = i
+			break
+		end
+	end
+
+	if not position then
+		return direction == 1 and candidates[1] or candidates[#candidates]
+	end
+
+	return candidates[((position - 1 + direction) % #candidates) + 1]
 end
 
 -- mux:entry
 --
--- Advance to the next previewer for the currently hovered file.
+-- Cycle previewers for the currently hovered file.
 --
--- - Get the URL of the currently hovered file
--- - Get the current previewer index for this URL
--- - Increment it
--- - Store it back
--- - Trigger a force peek to refresh the preview.
+-- `next` cycles forward, `prev` cycles backward, and `group --prefix=<prefix>` cycles
+-- forward through previewers whose names start with the supplied prefix.
 function M:entry(job)
 	local file_url = get_hovered_url_string()
 	ya.dbg({ title = "mux entry", args = job.args, file_url = file_url })
+
+	local command = job.args[1] or "next"
+	if command ~= "next" and command ~= "prev" and command ~= "group" then
+		show_error(string.format("unknown command '%s'", command))
+		return
+	end
+
+	local prefix = command == "group" and job.args.prefix or nil
+	if command == "group" and (not prefix or prefix == "") then
+		show_error("group requires a previewer name prefix")
+		return
+	end
 
 	local previewers = get_state(state_key_previewers(file_url))
 	if not previewers or #previewers == 0 then
@@ -267,11 +288,29 @@ function M:entry(job)
 		return
 	end
 
+	local candidates = {}
+	for index, previewer_name in ipairs(previewers) do
+		if not prefix or previewer_name:sub(1, #prefix) == prefix then
+			candidates[#candidates + 1] = index
+		end
+	end
+
+	if #candidates == 0 then
+		ya.notify({
+			title = "mux",
+			content = string.format("No previewers matching prefix '%s' for this file", prefix),
+			timeout = 2,
+			level = "error",
+		})
+		return
+	end
+
 	local previewers_count = #previewers
 	local current = get_state(state_key_current(file_url)) or 1
-	ya.dbg({ title = "mux entry", previewers = previewers })
+	ya.dbg({ title = "mux entry", previewers = previewers, candidates = candidates })
 
-	local new_current = advance_index(current, previewers_count)
+	local direction = command == "prev" and -1 or 1
+	local new_current = cycle_index(current, candidates, direction)
 	set_state(state_key_current(file_url), new_current)
 
 	if get_state(state_key_options(state_option_keys.notify_on_switch)) then

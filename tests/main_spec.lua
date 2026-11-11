@@ -244,6 +244,66 @@ test("entry cycles to the next previewer and emits a forced peek", function()
 	assert_equal(seek_call.method, "seek")
 end)
 
+test("entry prev cycles backward and wraps", function()
+	reset_environment()
+
+	local file_url = "file:///file-prev"
+	M:peek({ args = { "test.previewer.one", "test.previewer.two" }, file = { url = file_url } })
+	set_hovered(file_url)
+
+	M:entry({ args = { "prev" } })
+	M:seek({ args = {}, file = { url = file_url } })
+	assert_equal(previewer_calls[2].name, "test.previewer.two")
+
+	M:entry({ args = { "prev" } })
+	M:seek({ args = {}, file = { url = file_url } })
+	assert_equal(previewer_calls[3].name, "test.previewer.one")
+	assert_equal(#emits, 2, "expected two forced peeks")
+end)
+
+test("entry group enters a prefix group and cycles only its members", function()
+	reset_environment()
+	M:setup({
+		aliases = {
+			git_one = { previewer = "test.previewer.one", args = {} },
+			git_two = { previewer = "test.previewer.two", args = {} },
+		},
+	})
+
+	local file_url = "file:///file-group"
+	M:peek({
+		args = { "test.previewer.two", "git_one", "git_two" },
+		file = { url = file_url },
+	})
+	set_hovered(file_url)
+
+	M:entry({ args = { "group", prefix = "git_" } })
+	M:seek({ args = {}, file = { url = file_url } })
+	assert_equal(previewer_calls[2].name, "test.previewer.one")
+
+	M:entry({ args = { "group", prefix = "git_" } })
+	M:seek({ args = {}, file = { url = file_url } })
+	assert_equal(previewer_calls[3].name, "test.previewer.two")
+
+	M:entry({ args = { "group", prefix = "git_" } })
+	M:seek({ args = {}, file = { url = file_url } })
+	assert_equal(previewer_calls[4].name, "test.previewer.one")
+	assert_equal(#emits, 3, "expected three forced peeks")
+end)
+
+test("entry group reports when no previewer matches the prefix", function()
+	reset_environment()
+
+	local file_url = "file:///file-no-group"
+	M:peek({ args = { "test.previewer.one", "test.previewer.two" }, file = { url = file_url } })
+	set_hovered(file_url)
+	M:entry({ args = { "group", prefix = "git_" } })
+
+	assert_equal(#emits, 0, "expected no emit calls")
+	assert_equal(#notifications, 1, "expected one notification")
+	assert_equal(notifications[1].content, "No previewers matching prefix 'git_' for this file")
+end)
+
 test("entry does not fail if there are no mux previewers configured for the file type", function()
 	reset_environment()
 

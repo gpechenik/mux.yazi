@@ -32,10 +32,14 @@ prepend_previewers = [
 ```toml
 [mgr]
 prepend_keymap = [
-  { on = "p", run = "mux next", desc = "Show next previewer" },
+  { on = "p", run = "plugin mux next", desc = "Show next previewer" },
+  { on = "P", run = "plugin mux prev", desc = "Show previous previewer" },
+  { on = "G", run = "plugin mux -- group --prefix=git_", desc = "Cycle previewers whose names start with git_" },
   # ...
 ]
 ```
+
+`prev` cycles backward. `group --prefix=<prefix>` cycles forward through previewers whose names start with `<prefix>`; if the current previewer is outside that group, the first matching previewer is selected.
 
 ### Example setup (optional)
 
